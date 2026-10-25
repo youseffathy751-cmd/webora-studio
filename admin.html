@@ -1,0 +1,137 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Webora Studio | لوحة التحكم</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;background:#101010;color:#fff;font-family:Arial,sans-serif;padding:20px}
+    main{max-width:650px;margin:30px auto}
+    h1{color:#c9f36b}
+    section{background:#1d1d1d;padding:20px;border-radius:14px;margin:16px 0}
+    input,button{width:100%;padding:13px;margin:7px 0;border-radius:8px;border:1px solid #444;font-size:16px}
+    input{background:#111;color:white}
+    button{background:#c9f36b;color:#111;font-weight:bold;border:0}
+    .secondary{background:#333;color:#fff}
+    #status{line-height:1.8;overflow-wrap:anywhere}
+    .hint{color:#bbb;font-size:14px;line-height:1.7}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Webora Studio</h1>
+  <p>لوحة إدارة المتجر</p>
+
+  <section>
+    <h3>الاتصال بقاعدة البيانات</h3>
+    <input id="url" placeholder="Supabase Project URL">
+    <input id="key" placeholder="Supabase Publishable Key">
+    <button onclick="connect()">اتصال</button>
+    <p class="hint">استخدم رابط مشروعك ومفتاح Publishable فقط. لا تضع مفتاح Service Role هنا.</p>
+  </section>
+
+  <section id="panel" hidden>
+    <h3>إضافة منتج</h3>
+    <input id="store" placeholder="Store ID">
+    <input id="name" placeholder="اسم المنتج">
+    <input id="price" type="number" min="0" placeholder="السعر">
+    <input id="image" type="url" placeholder="رابط صورة المنتج">
+    <input id="category" placeholder="التصنيف">
+    <button onclick="addProduct()">إضافة المنتج</button>
+    <button class="secondary" onclick="loadProducts()">عرض المنتجات</button>
+    <div id="products"></div>
+  </section>
+
+  <p id="status" role="status">أدخل بيانات Supabase للبدء.</p>
+</main>
+<script>
+let client;
+
+function status(message){
+  document.getElementById('status').textContent=message;
+}
+
+async function connect(){
+  const url=document.getElementById('url').value.trim();
+  const key=document.getElementById('key').value.trim();
+
+  if(!url.startsWith('https://') || !key){
+    status('اكتب رابط Supabase ومفتاح Publishable الصحيح.');
+    return;
+  }
+
+  try{
+    client=window.supabase.createClient(url,key);
+    const {error}=await client.from('stores')
+      .select('id,name').limit(1);
+
+    if(error) throw error;
+
+    document.getElementById('panel').hidden=false;
+    status('تم الاتصال. أدخل Store ID الخاص بمتجرك.');
+  }catch(e){
+    status('تعذر الاتصال أو قراءة المتاجر. راجع البيانات وصلاحيات قاعدة البيانات.');
+  }
+}
+
+async function addProduct(){
+  if(!client)return;
+
+  const store_id=document.getElementById('store').value.trim();
+  const name=document.getElementById('name').value.trim();
+  const price=Number(document.getElementById('price').value);
+  const image_url=document.getElementById('image').value.trim();
+  const category=document.getElementById('category').value.trim();
+
+  if(!store_id||!name||!Number.isFinite(price)||price<0){
+    status('أدخل Store ID واسم المنتج وسعرًا صحيحًا.');
+    return;
+  }
+
+  try{
+    const {error}=await client.from('products').insert([{
+      store_id,name,price,image_url:image_url||null,
+      category:category||null,active:true
+    }]);
+
+    if(error)throw error;
+    status('تمت إضافة المنتج بنجاح.');
+    await loadProducts();
+  }catch(e){
+    status('لم تتم الإضافة. قد تكون صلاحيات المتجر أو سياسات قاعدة البيانات هي السبب.');
+  }
+}
+
+async function loadProducts(){
+  if(!client)return;
+  const store_id=document.getElementById('store').value.trim();
+  if(!store_id){status('أدخل Store ID أولًا.');return;}
+
+  try{
+    const {data,error}=await client.from('products')
+      .select('id,name,price,active')
+      .eq('store_id',store_id)
+      .order('created_at',{ascending:false});
+
+    if(error)throw error;
+
+    const box=document.getElementById('products');
+    box.replaceChildren();
+
+    (data||[]).forEach(p=>{
+      const item=document.createElement('p');
+      item.textContent=p.name+' — '+p.price+' — '+(p.active?'نشط':'غير نشط');
+      box.appendChild(item);
+    });
+
+    status('عدد المنتجات: '+(data||[]).length);
+  }catch(e){
+    status('تعذر عرض المنتجات. راجع صلاحيات القراءة.');
+  }
+}
+</script>
+</body>
+</html>
